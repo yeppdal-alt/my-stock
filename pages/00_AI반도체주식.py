@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # ----------------------------------------------------
 # 기본 설정
@@ -13,6 +14,17 @@ st.set_page_config(
     page_icon="🔬",
     layout="wide",
 )
+
+
+def now_kst_et_str() -> str:
+    """현재 시각을 한국시간(KST)과 미국 동부시간(ET) 두 줄로 반환."""
+    now_utc = datetime.now(ZoneInfo("UTC"))
+    kst = now_utc.astimezone(ZoneInfo("Asia/Seoul"))
+    et = now_utc.astimezone(ZoneInfo("America/New_York"))
+    return (
+        f"🇰🇷 KST {kst.strftime('%Y-%m-%d %H:%M:%S')}<br>"
+        f"🇺🇸 ET&nbsp;&nbsp;{et.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+    )
 
 # ----------------------------------------------------
 # AI 반도체 관련 종목 목록
@@ -78,8 +90,11 @@ def load_fundamentals(ticker: str) -> dict:
         info = yf.Ticker(ticker).info
     except Exception:
         info = {}
+    now_utc = datetime.now(ZoneInfo("UTC"))
+    kst_str = now_utc.astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
+    et_str = now_utc.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S %Z")
     return {
-        "_조회시각": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "_조회시각": f"KST {kst_str} / ET {et_str}",
         "통화": info.get("currency", "USD"),
         "현재가_raw": info.get("currentPrice") or info.get("regularMarketPrice"),
         "시가총액_raw": info.get("marketCap"),
@@ -161,8 +176,8 @@ with col_title:
     st.caption("NVIDIA, AMD, TSMC, ASML 등 AI 반도체 밸류체인 핵심 종목 · 밸류에이션 · 기술적 분석 · 상대성과 · 상관관계")
 with col_time:
     st.markdown(
-        f"""<div style='text-align:right; padding-top:26px; color:gray; font-size:0.85rem; line-height:1.4;'>
-        🕒 마지막 새로고침<br><b>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</b></div>""",
+        f"""<div style='text-align:right; padding-top:20px; color:gray; font-size:0.85rem; line-height:1.5;'>
+        🕒 마지막 새로고침<br>{now_kst_et_str()}</div>""",
         unsafe_allow_html=True,
     )
     if st.button("🔄 새로고침", use_container_width=True):
