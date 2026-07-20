@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 # ----------------------------------------------------
 # 기본 설정
@@ -13,6 +14,17 @@ st.set_page_config(
     page_icon="📈",
     layout="wide",
 )
+
+
+def now_kst_et_str() -> str:
+    """현재 시각을 한국시간(KST)과 미국 동부시간(ET) 두 줄로 반환."""
+    now_utc = datetime.now(ZoneInfo("UTC"))
+    kst = now_utc.astimezone(ZoneInfo("Asia/Seoul"))
+    et = now_utc.astimezone(ZoneInfo("America/New_York"))
+    return (
+        f"🇰🇷 KST {kst.strftime('%Y-%m-%d %H:%M:%S')}<br>"
+        f"🇺🇸 ET&nbsp;&nbsp;{et.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+    )
 
 # ----------------------------------------------------
 # 글로벌 주요 종목/지수 목록
@@ -113,8 +125,8 @@ with col_title:
     st.caption("Yahoo Finance 데이터 기반 · Plotly 시각화 · Streamlit Cloud 배포용")
 with col_time:
     st.markdown(
-        f"""<div style='text-align:right; padding-top:26px; color:gray; font-size:0.85rem; line-height:1.4;'>
-        🕒 마지막 새로고침<br><b>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</b></div>""",
+        f"""<div style='text-align:right; padding-top:20px; color:gray; font-size:0.85rem; line-height:1.5;'>
+        🕒 마지막 새로고침<br>{now_kst_et_str()}</div>""",
         unsafe_allow_html=True,
     )
     if st.button("🔄 새로고침", use_container_width=True):
