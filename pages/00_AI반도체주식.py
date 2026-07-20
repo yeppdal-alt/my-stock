@@ -60,6 +60,18 @@ def load_history(ticker: str, period: str) -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def get_usd_krw_rate() -> float:
+    """실시간 USD/KRW 환율 (1달러 = ?원). 조회 실패 시 대략치로 대체."""
+    try:
+        df = yf.Ticker("KRW=X").history(period="5d")
+        if not df.empty:
+            return float(df["Close"].iloc[-1])
+    except Exception:
+        pass
+    return 1380.0
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_fundamentals(ticker: str) -> dict:
     try:
@@ -67,8 +79,9 @@ def load_fundamentals(ticker: str) -> dict:
     except Exception:
         info = {}
     return {
-        "현재가": info.get("currentPrice") or info.get("regularMarketPrice"),
-        "시가총액(B$)": (info.get("marketCap") / 1e9) if info.get("marketCap") else None,
+        "통화": info.get("currency", "USD"),
+        "현재가_raw": info.get("currentPrice") or info.get("regularMarketPrice"),
+        "시가총액_raw": info.get("marketCap"),
         "PER(trailing)": info.get("trailingPE"),
         "PER(forward)": info.get("forwardPE"),
         "PBR": info.get("priceToBook"),
@@ -160,15 +173,29 @@ tab1, tab2, tab3, tab4 = st.tabs(
 with tab1:
     st.subheader("종목별 핵심 지표 비교")
 
+    fx_rate = get_usd_krw_rate()
+
     rows = []
     with st.spinner("펀더멘털 데이터 불러오는 중..."):
         for name, ticker in selected_tickers.items():
             f = load_fundamentals(ticker)
+            currency = f.get("통화") or "USD"
+            price_raw = f["현재가_raw"]
+            mc_raw = f["시가총액_raw"]
+
+            if currency == "KRW":
+                price_usd = (price_raw / fx_rate) if isinstance(price_raw, (int, float)) else None
+                mc_usd_b = (mc_raw / fx_rate / 1e9) if isinstance(mc_raw, (int, float)) else None
+            else:
+                price_usd = price_raw
+                mc_usd_b = (mc_raw / 1e9) if isinstance(mc_raw, (int, float)) else None
+
             rows.append({
                 "종목": name,
                 "티커": ticker,
-                "현재가": fmt_num(f["현재가"]),
-                "시가총액(B$)": fmt_num(f["시가총액(B$)"]),
+                "원통화": currency,
+                "현재가($)": fmt_num(price_usd),
+                "시가총액(B$)": fmt_num(mc_usd_b),
                 "PER(TTM)": fmt_num(f["PER(trailing)"]),
                 "PER(Fwd)": fmt_num(f["PER(forward)"]),
                 "PBR": fmt_num(f["PBR"]),
@@ -176,16 +203,18 @@ with tab1:
                 "영업이익률": fmt_pct(f["영업이익률"]),
                 "ROE": fmt_pct(f["ROE"]),
                 "베타": fmt_num(f["베타"]),
-                "_marketcap_raw": f["시가총액(B$)"],
+                "_marketcap_raw": mc_usd_b,
                 "_per_raw": f["PER(trailing)"],
                 "_opmargin_raw": f["영업이익률"],
                 "_revgrowth_raw": f["매출성장률(YoY)"],
             })
 
     df_val = pd.DataFrame(rows)
-    display_cols = ["종목", "티커", "현재가", "시가총액(B$)", "PER(TTM)", "PER(Fwd)",
+    display_cols = ["종목", "티커", "원통화", "현재가($)", "시가총액(B$)", "PER(TTM)", "PER(Fwd)",
                      "PBR", "매출성장률", "영업이익률", "ROE", "베타"]
     st.dataframe(df_val[display_cols], use_container_width=True, hide_index=True)
+    st.caption(f"💱 원화(KRW) 종목은 실시간 환율(1$ ≈ {fx_rate:,.0f}원)로 달러 환산하여 표시했습니다. "
+               f"PER·PBR·ROE 등 비율 지표는 통화 환산이 필요 없어 원본 값 그대로입니다.")
 
     col1, col2 = st.columns(2)
     with col1:
