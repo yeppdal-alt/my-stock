@@ -107,8 +107,19 @@ st.sidebar.caption("데이터 출처: Yahoo Finance (yfinance)")
 # ----------------------------------------------------
 # 메인 화면
 # ----------------------------------------------------
-st.title("📈 글로벌 주요 주식 대시보드")
-st.caption("Yahoo Finance 데이터 기반 · Plotly 시각화 · Streamlit Cloud 배포용")
+col_title, col_time = st.columns([5, 2])
+with col_title:
+    st.title("📈 글로벌 주요 주식 대시보드")
+    st.caption("Yahoo Finance 데이터 기반 · Plotly 시각화 · Streamlit Cloud 배포용")
+with col_time:
+    st.markdown(
+        f"""<div style='text-align:right; padding-top:26px; color:gray; font-size:0.85rem; line-height:1.4;'>
+        🕒 마지막 새로고침<br><b>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</b></div>""",
+        unsafe_allow_html=True,
+    )
+    if st.button("🔄 새로고침", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
 if not selected_names:
     st.info("왼쪽 사이드바에서 종목을 하나 이상 선택해 주세요.")
@@ -154,6 +165,8 @@ if chart_type == "캔들스틱 (개별)":
                 continue
 
             date_col = "Date" if "Date" in df.columns else "Datetime"
+            last_date = pd.to_datetime(df[date_col].max()).strftime("%Y-%m-%d")
+            st.caption(f"📅 데이터 기준일(최근 거래일): **{last_date}**")
 
             fig = make_subplots(
                 rows=2, cols=1, shared_xaxes=True,
@@ -219,8 +232,15 @@ else:
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    if not combined_df.empty:
+        last_date = pd.to_datetime(combined_df.index.max()).strftime("%Y-%m-%d")
+        st.caption(f"📅 데이터 기준일(최근 거래일): **{last_date}**")
+
     with st.expander("원본 종가 데이터 보기"):
         st.dataframe(combined_df.tail(50), use_container_width=True)
 
 st.divider()
-st.caption(f"마지막 업데이트: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} · 데이터는 5분마다 갱신됩니다.")
+st.caption(
+    "※ 상단의 새로고침 시각은 페이지가 로드된 시각이며, 가격 데이터는 5분 캐시(TTL)로 관리되어 "
+    "실제 시세는 최대 5분 전 값일 수 있습니다. 즉시 최신화하려면 상단 '🔄 새로고침' 버튼을 눌러주세요."
+)
