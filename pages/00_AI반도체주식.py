@@ -79,6 +79,7 @@ def load_fundamentals(ticker: str) -> dict:
     except Exception:
         info = {}
     return {
+        "_조회시각": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "통화": info.get("currency", "USD"),
         "현재가_raw": info.get("currentPrice") or info.get("regularMarketPrice"),
         "시가총액_raw": info.get("marketCap"),
@@ -154,8 +155,19 @@ st.sidebar.caption("데이터 출처: Yahoo Finance (yfinance)")
 # ----------------------------------------------------
 # 메인 화면
 # ----------------------------------------------------
-st.title("🔬 AI 반도체 주식 전문 분석")
-st.caption("NVIDIA, AMD, TSMC, ASML 등 AI 반도체 밸류체인 핵심 종목 · 밸류에이션 · 기술적 분석 · 상대성과 · 상관관계")
+col_title, col_time = st.columns([5, 2])
+with col_title:
+    st.title("🔬 AI 반도체 주식 전문 분석")
+    st.caption("NVIDIA, AMD, TSMC, ASML 등 AI 반도체 밸류체인 핵심 종목 · 밸류에이션 · 기술적 분석 · 상대성과 · 상관관계")
+with col_time:
+    st.markdown(
+        f"""<div style='text-align:right; padding-top:26px; color:gray; font-size:0.85rem; line-height:1.4;'>
+        🕒 마지막 새로고침<br><b>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</b></div>""",
+        unsafe_allow_html=True,
+    )
+    if st.button("🔄 새로고침", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
 if not selected_names:
     st.info("왼쪽 사이드바에서 분석할 종목을 하나 이상 선택해 주세요.")
@@ -176,9 +188,11 @@ with tab1:
     fx_rate = get_usd_krw_rate()
 
     rows = []
+    fetch_times = []
     with st.spinner("펀더멘털 데이터 불러오는 중..."):
         for name, ticker in selected_tickers.items():
             f = load_fundamentals(ticker)
+            fetch_times.append(f.get("_조회시각"))
             currency = f.get("통화") or "USD"
             price_raw = f["현재가_raw"]
             mc_raw = f["시가총액_raw"]
@@ -213,8 +227,12 @@ with tab1:
     display_cols = ["종목", "티커", "원통화", "현재가($)", "시가총액(B$)", "PER(TTM)", "PER(Fwd)",
                      "PBR", "매출성장률", "영업이익률", "ROE", "베타"]
     st.dataframe(df_val[display_cols], use_container_width=True, hide_index=True)
+
+    latest_fetch = max([t for t in fetch_times if t], default=None)
     st.caption(f"💱 원화(KRW) 종목은 실시간 환율(1$ ≈ {fx_rate:,.0f}원)로 달러 환산하여 표시했습니다. "
                f"PER·PBR·ROE 등 비율 지표는 통화 환산이 필요 없어 원본 값 그대로입니다.")
+    if latest_fetch:
+        st.caption(f"📅 펀더멘털 데이터 조회 시각: **{latest_fetch}** (30분 캐시 · Yahoo Finance 실시간 스냅샷 기준)")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -267,6 +285,8 @@ with tab2:
         st.warning("데이터를 불러올 수 없습니다.")
     else:
         date_col = "Date" if "Date" in df.columns else "Datetime"
+        last_date = pd.to_datetime(df[date_col].max()).strftime("%Y-%m-%d")
+        st.caption(f"📅 데이터 기준일(최근 거래일): **{last_date}**")
         df["MA20"] = df["Close"].rolling(20).mean()
         df["MA50"] = df["Close"].rolling(50).mean()
         df["MA200"] = df["Close"].rolling(200).mean()
@@ -331,6 +351,7 @@ with tab3:
     st.subheader(f"정규화 상대성과 비교 (시작일=100, 기준지수: {benchmark_label})")
 
     fig_rel = go.Figure()
+    last_dates = []
     with st.spinner("데이터 불러오는 중..."):
         for name, ticker in selected_tickers.items():
             df_t = load_history(ticker, period)
@@ -339,6 +360,7 @@ with tab3:
             date_col = "Date" if "Date" in df_t.columns else "Datetime"
             norm = df_t["Close"] / df_t["Close"].iloc[0] * 100
             fig_rel.add_trace(go.Scatter(x=df_t[date_col], y=norm, name=name, mode="lines"))
+            last_dates.append(df_t[date_col].max())
 
         df_bench = load_history(benchmark_ticker, period)
         if not df_bench.empty:
@@ -348,6 +370,11 @@ with tab3:
                 x=df_bench[date_col_b], y=norm_b, name=f"{benchmark_label} (기준)",
                 mode="lines", line=dict(color="black", dash="dash", width=2),
             ))
+            last_dates.append(df_bench[date_col_b].max())
+
+    if last_dates:
+        last_date = pd.to_datetime(max(last_dates)).strftime("%Y-%m-%d")
+        st.caption(f"📅 데이터 기준일(최근 거래일): **{last_date}**")
 
     fig_rel.update_layout(
         height=600, xaxis_title="날짜", yaxis_title="정규화 지수 (시작일=100)",
@@ -381,9 +408,16 @@ with tab4:
         ))
         fig_corr.update_layout(height=550, margin=dict(l=10, r=10, t=30, b=10))
         st.plotly_chart(fig_corr, use_container_width=True)
+        if not returns_df.empty:
+            last_date = pd.to_datetime(returns_df.index.max()).strftime("%Y-%m-%d")
+            st.caption(f"📅 데이터 기준일(최근 거래일): **{last_date}**")
         st.caption("1에 가까울수록 함께 움직이고, -1에 가까울수록 반대로 움직입니다.")
     else:
         st.info("상관관계를 보려면 2개 이상의 종목을 선택해 주세요.")
 
 st.divider()
-st.caption(f"마지막 업데이트: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} · 투자 참고용이며 투자 판단의 책임은 본인에게 있습니다.")
+st.caption(
+    "※ 상단의 새로고침 시각은 페이지가 로드된 시각입니다. 가격 데이터는 10분, 펀더멘털 데이터는 30분 캐시(TTL)로 "
+    "관리되어 실제 시세와 최대 그만큼 차이가 날 수 있습니다. 즉시 최신화하려면 상단 '🔄 새로고침' 버튼을 눌러주세요. "
+    "투자 참고용이며 투자 판단의 책임은 본인에게 있습니다."
+)
